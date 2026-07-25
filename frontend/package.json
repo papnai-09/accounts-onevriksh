@@ -1,0 +1,43 @@
+{
+  "name": "onevriksh-accounts",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npx.cmd next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^3.9.1",
+    "bcryptjs": "^2.4.3",
+    "clsx": "^2.1.1",
+    "firebase": "^10.14.1",
+    "framer-motion": "^11.18.2",
+    "is-number": "^7.0.0",
+    "jose": "^5.9.6",
+    "lucide-react": "^0.460.0",
+    "mongoose": "^8.8.2",
+    "next": "^15.1.7",
+    "nodemailer": "^6.9.16",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-hook-form": "^7.53.2",
+    "tailwind-merge": "^2.5.4",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20.17.6",
+    "@types/nodemailer": "^6.4.17",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^15.1.7",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.15",
+    "typescript": "^5.6.3"
+  }
+}
