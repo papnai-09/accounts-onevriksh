@@ -105,37 +105,38 @@ export class AuthService {
   static async sendOtp(phone: string) {
     if (!phone) throw new Error("Mobile number is required.");
 
-    const rateLimit = checkRateLimit(`send_otp_${phone}`, 5, 15 * 60 * 1000);
+    const cleanPhone = phone.trim();
+    const rateLimit = checkRateLimit(`send_otp_${cleanPhone}`, 5, 15 * 60 * 1000);
     if (!rateLimit.allowed) {
       throw new Error("Too many OTP requests for this number. Please try again later.");
     }
 
     // Preserve existing payload if resending registration OTP
-    const existingToken = await VerificationToken.findOne({ identifier: phone }).sort({ createdAt: -1 });
+    const existingToken = await VerificationToken.findOne({ identifier: cleanPhone }).sort({ createdAt: -1 });
     const payload = existingToken?.payload;
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
 
     // Clear existing tokens for this phone
-    await VerificationToken.deleteMany({ identifier: phone });
+    await VerificationToken.deleteMany({ identifier: cleanPhone });
 
-    const existingUser = await User.findOne({ phone });
+    const existingUser = await User.findOne({ phone: cleanPhone });
     await VerificationToken.create({
       userId: existingUser ? existingUser._id : undefined,
-      identifier: phone,
+      identifier: cleanPhone,
       token: otp,
-      type: "PHONE_OTP",
+      type: payload ? "REGISTRATION_OTP" : "PHONE_OTP",
       payload,
       expiresAt,
     });
 
     // Send Real SMS OTP via SMS Gateway (Fast2SMS / Twilio) or Simulation
-    await sendSmsOtp(phone, otp);
+    await sendSmsOtp(cleanPhone, otp);
 
     return {
       success: true,
-      message: `OTP sent to ${phone}`,
+      message: `OTP sent to ${cleanPhone}`,
       otp,
     };
   }
@@ -143,19 +144,24 @@ export class AuthService {
   static async verifyOtp(phone: string, otp: string) {
     if (!phone || !otp) throw new Error("Mobile number and OTP are required.");
 
-    const isMock = otp === "123456";
+    const cleanPhone = phone.trim();
+    const cleanOtp = otp.trim();
+    const isMock = cleanOtp === "123456";
+
     let record = await VerificationToken.findOne({
-      identifier: phone,
-      token: otp,
+      identifier: cleanPhone,
+      token: cleanOtp,
       expiresAt: { $gt: new Date() },
     });
 
     if (!record && isMock) {
       // Find latest token record for this phone to retrieve payload if mock OTP is used
       record = await VerificationToken.findOne({
-        identifier: phone,
+        identifier: cleanPhone,
       }).sort({ createdAt: -1 });
-    } else if (!record) {
+    }
+
+    if (!record && !isMock) {
       throw new Error("Invalid or expired OTP code.");
     }
 
@@ -165,6 +171,7 @@ export class AuthService {
         $or: [
           { phone: record.payload.phone },
           { username: record.payload.username },
+          { email: record.payload.email },
         ]
       });
 
@@ -181,13 +188,15 @@ export class AuthService {
       }
     } else {
       // Update existing user phone verification status in MongoDB Atlas
-      const user = await User.findOne({ phone });
+      const user = await User.findOne({ phone: cleanPhone });
       if (user) {
         user.isPhoneVerified = true;
         if (user.status === "PENDING_VERIFICATION" || user.status === "PENDING") {
           user.status = "ACTIVE";
         }
         await user.save();
+      } else if (!isMock) {
+        throw new Error("No pending registration found for this mobile number.");
       }
     }
 
@@ -207,23 +216,31 @@ export class AuthService {
       throw new Error("Too many registration attempts. Please try again later.");
     }
 
-    if (input.phone) {
-      const existingPhone = await User.findOne({ phone: input.phone });
+    const cleanPhone = input.phone ? input.phone.trim() : undefined;
+    const cleanUsername = input.username ? input.username.toLowerCase().trim() : undefined;
+
+    if (cleanPhone) {
+      const existingPhone = await User.findOne({ phone: cleanPhone });
       if (existingPhone) {
         throw new Error("An account with this mobile number already exists.");
       }
     }
 
-    if (input.username) {
-      const existingUsername = await User.findOne({ username: input.username.toLowerCase() });
+    if (cleanUsername) {
+      const existingUsername = await User.findOne({ username: cleanUsername });
       if (existingUsername) {
         throw new Error("This username is already taken.");
       }
     }
 
     const emailAddr = input.email
-      ? input.email.toLowerCase()
-      : `${input.username ? input.username.toLowerCase() : "user_" + Date.now()}@onevriksh.internal`;
+      ? input.email.toLowerCase().trim()
+      : `${cleanUsername ? cleanUsername : "user_" + Date.now()}@onevriksh.internal`;
+
+    const existingEmail = await User.findOne({ email: emailAddr });
+    if (existingEmail) {
+      throw new Error("An account with this email address already exists.");
+    }
 
     const passwordHash = await hashPassword(input.password || "DefaultPassword@123");
 
@@ -231,9 +248,9 @@ export class AuthService {
     const userPayload = {
       firstName: input.firstName,
       lastName: input.lastName,
-      username: input.username ? input.username.toLowerCase() : undefined,
+      username: cleanUsername,
       email: emailAddr,
-      phone: input.phone || undefined,
+      phone: cleanPhone,
       passwordHash,
       roles: ["CUSTOMER"],
       status: "ACTIVE",
@@ -246,17 +263,17 @@ export class AuthService {
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
 
     // Clear existing tokens for this phone and save OTP with registration payload
-    if (input.phone) {
-      await VerificationToken.deleteMany({ identifier: input.phone });
+    if (cleanPhone) {
+      await VerificationToken.deleteMany({ identifier: cleanPhone });
       await VerificationToken.create({
-        identifier: input.phone,
+        identifier: cleanPhone,
         token: otp,
         type: "REGISTRATION_OTP",
         payload: userPayload,
         expiresAt,
       });
 
-      await sendSmsOtp(input.phone, otp);
+      await sendSmsOtp(cleanPhone, otp);
     }
 
     return {

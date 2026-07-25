@@ -51,9 +51,6 @@ export async function registerAction(data: RegisterInput): Promise<{ success: bo
     const ua = headerStore.get("user-agent") || "Unknown";
 
     await AuthService.register(data, ip, ua);
-    if (data.phone) {
-      await AuthService.sendOtp(data.phone);
-    }
     return { success: true };
   } catch (err: unknown) {
     if (err instanceof Error) return { success: false, error: err.message };
