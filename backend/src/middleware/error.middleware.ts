@@ -1,11 +1,14 @@
 import { Request, Response, NextFunction } from "express";
 
-export function errorHandler(err: any, req: Request, res: Response, next: NextFunction) {
-  const statusCode = err.statusCode || 400;
-  const message = err.message || "Internal server error";
+export function errorHandler(err: any, _req: Request, res: Response, _next: NextFunction) {
+  console.error("❌ [Global Error Handler]:", err);
+
+  const statusCode = err.statusCode || err.status || 500;
+  const error = err.code || err.error || "server_error";
+  const description = err.description || err.message || "An unexpected error occurred on the server";
 
   res.status(statusCode).json({
-    success: false,
-    error: message,
+    error,
+    error_description: description,
   });
 }

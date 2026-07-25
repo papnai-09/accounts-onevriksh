@@ -1,16 +1,14 @@
 import { Router } from "express";
-import { UserController } from "../controllers/user.controller.js";
-import { authenticateJWT } from "../middleware/auth.middleware.js";
+import { ConsentController } from "../controllers/consent.controller.js";
+import { requireUserSession } from "../middleware/auth.middleware.js";
 
 const router = Router();
+const consentController = new ConsentController();
 
-router.use(authenticateJWT);
+router.use(requireUserSession);
 
-router.get("/me", UserController.getMe);
-router.put("/profile", UserController.updateProfile);
-router.post("/change-password", UserController.changePassword);
-router.post("/deactivate", UserController.deactivateAccount);
-router.delete("/account", UserController.deleteAccount);
-router.get("/export", UserController.exportUserData);
+// Connected applications
+router.get("/connected-apps", (req, res, next) => consentController.getConnectedApps(req, res, next));
+router.delete("/connected-apps/:clientId", (req, res, next) => consentController.revokeConsent(req, res, next));
 
 export default router;

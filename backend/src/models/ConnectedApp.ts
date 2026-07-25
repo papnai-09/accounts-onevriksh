@@ -1,29 +1,30 @@
-import mongoose, { Schema, Document, Model } from "mongoose";
+import mongoose, { Document, Schema } from "mongoose";
 
 export interface IConnectedApp extends Document {
-  _id: mongoose.Types.ObjectId;
-  name: string;
-  domain: string;
+  userId: mongoose.Types.ObjectId;
   clientId: string;
-  clientSecretHash: string;
-  redirectUris: string[];
-  logoUrl?: string;
-  isOfficial: boolean;
-  createdAt: Date;
+  grantedScopes: string[];
+  grantedAt: Date;
+  updatedAt: Date;
 }
 
-const ConnectedAppSchema: Schema<IConnectedApp> = new Schema(
+const ConnectedAppSchema = new Schema<IConnectedApp>(
   {
-    name: { type: String, required: true },
-    domain: { type: String, required: true, index: true },
-    clientId: { type: String, required: true, unique: true },
-    clientSecretHash: { type: String, required: true },
-    redirectUris: [{ type: String, required: true }],
-    logoUrl: { type: String, default: "" },
-    isOfficial: { type: Boolean, default: true },
+    userId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
+    clientId: { type: String, required: true, index: true },
+    grantedScopes: { type: [String], required: true },
+    grantedAt: { type: Date, default: Date.now },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    collection: "connected_apps",
+  }
 );
 
-export const ConnectedApp: Model<IConnectedApp> =
-  mongoose.models.ConnectedApp || mongoose.model<IConnectedApp>("ConnectedApp", ConnectedAppSchema);
+ConnectedAppSchema.index({ userId: 1, clientId: 1 }, { unique: true });
+
+if (mongoose.models && (mongoose.models as any).ConnectedApp) {
+  delete (mongoose.models as any).ConnectedApp;
+}
+
+export const ConnectedApp = mongoose.model<IConnectedApp>("ConnectedApp", ConnectedAppSchema);

@@ -1,41 +1,35 @@
 import { Response, NextFunction } from "express";
-import { AuthenticatedRequest } from "../middleware/auth.middleware.js";
 import { SessionService } from "../services/session.service.js";
+import { AuthenticatedRequest } from "../middleware/auth.middleware.js";
+
+const sessionService = new SessionService();
 
 export class SessionController {
-  static async getActiveSessions(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  async getActiveSessions(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
-      const sessions = await SessionService.getActiveSessions(req.user!.userId);
+      const currentSessionId = req.session?._id?.toString();
+      const sessions = await sessionService.getUserSessions(req.user._id.toString(), currentSessionId);
       res.status(200).json({ success: true, sessions });
     } catch (error) {
       next(error);
     }
   }
 
-  static async revokeSession(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  async terminateSession(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
-      const sessionId = String(req.params.id);
-      const result = await SessionService.revokeSession(req.user!.userId, sessionId);
-      res.status(200).json(result);
+      const sessionId = req.params.sessionId as string;
+      const success = await sessionService.terminateSession(req.user._id.toString(), sessionId);
+      res.status(200).json({ success, message: "Session terminated" });
     } catch (error) {
       next(error);
     }
   }
 
-  static async logoutOtherDevices(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  async terminateOtherSessions(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
-      const result = await SessionService.logoutOtherDevices(req.user!.userId);
-      res.status(200).json(result);
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  static async getLoginHistory(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-    try {
-      const limit = Number(req.query.limit) || 20;
-      const history = await SessionService.getLoginHistory(req.user!.userId, limit);
-      res.status(200).json({ success: true, history });
+      const currentSessionId = req.session._id.toString();
+      const count = await sessionService.terminateAllOtherSessions(req.user._id.toString(), currentSessionId);
+      res.status(200).json({ success: true, terminatedCount: count });
     } catch (error) {
       next(error);
     }

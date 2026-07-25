@@ -1,80 +1,71 @@
-import { Session } from "../models/Session.js";
-import { LoginHistory } from "../models/LoginHistory.js";
-import { SecurityEvent } from "../models/SecurityEvent.js";
-import { RefreshToken } from "../models/RefreshToken.js";
+import { SessionRepository } from "../repositories/session.repository.js";
+import { parseUserAgent } from "../utils/uaParser.util.js";
+import { getCountryFromIp } from "../utils/geoIp.util.js";
+import { generateRandomToken, hashToken } from "../utils/tokens.util.js";
 
 export class SessionService {
-  static async getActiveSessions(userId: string, currentSessionId?: string) {
-    const sessions = await Session.find({
-      userId,
-      isValid: true,
-      expiresAt: { $gt: new Date() },
-    }).sort({ updatedAt: -1 }).lean();
+  private sessionRepo = new SessionRepository();
 
-    return (sessions as any[]).map((s) => ({
-      id: String(s._id),
+  async createSession(userId: string, ipAddress: string, userAgent?: string) {
+    const rawToken = generateRandomToken(32);
+    const tokenHash = hashToken(rawToken);
+    const { browser, os, deviceName } = parseUserAgent(userAgent);
+    const country = getCountryFromIp(ipAddress);
+
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30); // 30 days session
+
+    const session = await this.sessionRepo.create({
+      userId: userId as any,
+      sessionTokenHash: tokenHash,
+      ipAddress,
+      userAgent,
+      browser,
+      os,
+      deviceName,
+      country,
+      lastActivity: new Date(),
+      expiresAt,
+      isActive: true,
+    });
+
+    return { session, rawToken };
+  }
+
+  async validateSessionToken(rawToken: string) {
+    const tokenHash = hashToken(rawToken);
+    const session = await this.sessionRepo.findByTokenHash(tokenHash);
+    if (!session || new Date() > session.expiresAt) {
+      return null;
+    }
+    // Update last activity
+    await this.sessionRepo.updateLastActivity(session._id.toString());
+    return session;
+  }
+
+  async getUserSessions(userId: string, currentSessionId?: string) {
+    const sessions = await this.sessionRepo.findActiveByUserId(userId);
+    return sessions.map((s) => ({
+      id: s._id.toString(),
       browser: s.browser,
       os: s.os,
-      device: s.device,
+      deviceName: s.deviceName,
       ipAddress: s.ipAddress,
-      isCurrent: currentSessionId ? String(s._id) === currentSessionId : s.isCurrent,
-      lastActiveAt: s.updatedAt,
-      createdAt: s.createdAt,
+      country: s.country,
+      lastActivity: s.lastActivity,
+      isCurrent: currentSessionId ? s._id.toString() === currentSessionId : false,
     }));
   }
 
-  static async revokeSession(userId: string, sessionId: string) {
-    const session = await Session.findOne({ _id: sessionId, userId });
-    if (!session) throw new Error("Session not found.");
-
-    session.isValid = false;
-    await session.save();
-
-    await SecurityEvent.create({
-      userId,
-      eventType: "SESSION_REVOKED",
-      description: `Session revoked for ${session.browser} on ${session.os}`,
-      ipAddress: session.ipAddress,
-      userAgent: session.userAgent,
-    });
-
-    return { success: true, message: "Session revoked successfully." };
+  async terminateSession(userId: string, sessionId: string) {
+    return this.sessionRepo.terminateSession(sessionId, userId);
   }
 
-  static async logoutOtherDevices(userId: string, currentSessionId?: string) {
-    const query: Record<string, any> = { userId, isValid: true };
-    if (currentSessionId) {
-      query._id = { $ne: currentSessionId };
-    }
-
-    await Session.updateMany(query, { isValid: false });
-    await RefreshToken.updateMany({ userId }, { isRevoked: true });
-
-    await SecurityEvent.create({
-      userId,
-      eventType: "SESSION_REVOKED",
-      description: "Revoked all other active sessions across devices",
-      ipAddress: "127.0.0.1",
-      userAgent: "Security Dashboard",
-    });
-
-    return { success: true, message: "All other sessions have been logged out." };
+  async terminateAllOtherSessions(userId: string, currentSessionId: string) {
+    return this.sessionRepo.terminateAllOtherSessions(userId, currentSessionId);
   }
 
-  static async getLoginHistory(userId: string, limit: number = 20) {
-    const history = await LoginHistory.find({ userId })
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .lean();
-
-    return (history as any[]).map((h) => ({
-      id: String(h._id),
-      status: h.status,
-      browser: h.browser,
-      os: h.os,
-      device: h.device,
-      ipAddress: h.ipAddress,
-      createdAt: h.createdAt,
-    }));
+  async terminateAllUserSessions(userId: string) {
+    return this.sessionRepo.terminateAllUserSessions(userId);
   }
 }

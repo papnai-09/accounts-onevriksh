@@ -1,161 +1,91 @@
 import { Request, Response, NextFunction } from "express";
 import { AuthService } from "../services/auth.service.js";
+import { SessionService } from "../services/session.service.js";
+import { AuditService } from "../services/audit.service.js";
 
-const COOKIE_OPTIONS = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "lax" as const,
-  path: "/",
-};
+const authService = new AuthService();
+const sessionService = new SessionService();
+const auditService = new AuditService();
 
 export class AuthController {
-  static async firebaseLogin(req: Request, res: Response, next: NextFunction) {
+  async register(req: Request, res: Response, next: NextFunction) {
     try {
-      const { idToken, phone, userData } = req.body;
-      const ip = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "127.0.0.1";
-      const ua = req.headers["user-agent"] || "Unknown";
+      const user = await authService.register(req.body);
+      const ip = req.ip || "127.0.0.1";
+      const ua = req.headers["user-agent"];
 
-      const result = await AuthService.firebaseLogin(idToken, phone, userData, ip, ua);
+      const { rawToken } = await sessionService.createSession(user._id.toString(), ip, ua);
 
-      res.cookie("onevriksh_access", result.accessToken, {
-        ...COOKIE_OPTIONS,
-        maxAge: 15 * 60 * 1000,
-      });
-
-      res.cookie("onevriksh_refresh", result.refreshToken, {
-        ...COOKIE_OPTIONS,
+      res.cookie("onevriksh_session", rawToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
         maxAge: 30 * 24 * 60 * 60 * 1000,
       });
 
-      res.status(200).json(result);
-    } catch (error) {
-      next(error);
-    }
-  }
+      await auditService.logEvent("USER_REGISTER", "SUCCESS", ip, ua, user._id.toString());
 
-  static async sendOtp(req: Request, res: Response, next: NextFunction) {
-    try {
-      const { phone } = req.body;
-      const result = await AuthService.sendOtp(phone);
-      res.status(200).json(result);
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  static async verifyOtp(req: Request, res: Response, next: NextFunction) {
-    try {
-      const { phone, otp } = req.body;
-      const result = await AuthService.verifyOtp(phone, otp);
-      res.status(200).json(result);
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  static async register(req: Request, res: Response, next: NextFunction) {
-    try {
-      const ip = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "127.0.0.1";
-      const ua = req.headers["user-agent"] || "Unknown";
-      const result = await AuthService.register(req.body, ip, ua);
-      res.status(201).json(result);
-    } catch (error: any) {
-      if (error.message && error.message.includes("already exists")) {
-        res.status(409).json({ success: false, error: error.message });
-        return;
-      }
-      res.status(400).json({ success: false, error: error.message || "Registration failed" });
-    }
-  }
-
-  static async verifyEmail(req: Request, res: Response, next: NextFunction) {
-    try {
-      const { token } = req.body;
-      const result = await AuthService.verifyEmail(token);
-      res.status(200).json(result);
-    } catch (error: any) {
-      res.status(400).json({ success: false, error: error.message || "Email verification failed" });
-    }
-  }
-
-  static async resendVerificationEmail(req: Request, res: Response, next: NextFunction) {
-    try {
-      const { email } = req.body;
-      const result = await AuthService.resendVerificationEmail(email);
-      res.status(200).json(result);
-    } catch (error: any) {
-      res.status(400).json({ success: false, error: error.message || "Could not resend verification email" });
-    }
-  }
-
-  static async login(req: Request, res: Response, next: NextFunction) {
-    try {
-      const ip = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "127.0.0.1";
-      const ua = req.headers["user-agent"] || "Unknown";
-      const result = await AuthService.login(req.body, ip, ua);
-
-      res.cookie("onevriksh_access", result.accessToken, {
-        ...COOKIE_OPTIONS,
-        maxAge: 15 * 60 * 1000,
+      res.status(201).json({
+        success: true,
+        user: {
+          id: user._id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+        },
       });
-
-      res.cookie("onevriksh_refresh", result.refreshToken, {
-        ...COOKIE_OPTIONS,
-        maxAge: req.body.rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000,
-      });
-
-      res.status(200).json(result);
     } catch (error: any) {
-      if (error.message && error.message.includes("not verified")) {
-        res.status(403).json({ success: false, error: error.message, requiresVerification: true });
-        return;
-      }
-      res.status(401).json({ success: false, error: error.message || "Login failed" });
-    }
-  }
-
-  static async logout(req: Request, res: Response, next: NextFunction) {
-    try {
-      const refreshToken = req.cookies?.onevriksh_refresh;
-      if (refreshToken) {
-        await AuthService.logout(refreshToken);
-      }
-
-      res.clearCookie("onevriksh_access", COOKIE_OPTIONS);
-      res.clearCookie("onevriksh_refresh", COOKIE_OPTIONS);
-
-      res.status(200).json({ success: true, message: "Logged out successfully." });
-    } catch (error) {
       next(error);
     }
   }
 
-  static async refresh(req: Request, res: Response, next: NextFunction) {
+  async login(req: Request, res: Response, next: NextFunction) {
     try {
-      const refreshToken = req.cookies?.onevriksh_refresh || req.body?.refreshToken;
-      if (!refreshToken) {
-        res.status(401).json({ success: false, error: "No refresh token provided." });
-        return;
-      }
+      const ip = req.ip || "127.0.0.1";
+      const ua = req.headers["user-agent"];
 
-      const ip = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "127.0.0.1";
-      const ua = req.headers["user-agent"] || "Unknown";
+      const user = await authService.login(req.body);
+      const { rawToken } = await sessionService.createSession(user._id.toString(), ip, ua);
 
-      const result = await AuthService.refreshTokens(refreshToken, ip, ua);
-
-      res.cookie("onevriksh_access", result.accessToken, {
-        ...COOKIE_OPTIONS,
-        maxAge: 15 * 60 * 1000,
-      });
-
-      res.cookie("onevriksh_refresh", result.refreshToken, {
-        ...COOKIE_OPTIONS,
+      res.cookie("onevriksh_session", rawToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
         maxAge: 30 * 24 * 60 * 60 * 1000,
       });
 
-      res.status(200).json({ success: true, accessToken: result.accessToken });
-    } catch (error) {
+      await auditService.logEvent("USER_LOGIN", "SUCCESS", ip, ua, user._id.toString());
+
+      res.status(200).json({
+        success: true,
+        user: {
+          id: user._id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          avatarUrl: user.avatarUrl,
+        },
+      });
+    } catch (error: any) {
+      const ip = req.ip || "127.0.0.1";
+      const ua = req.headers["user-agent"];
+      await auditService.logEvent("USER_LOGIN", "FAILURE", ip, ua, undefined, undefined, {
+        email: req.body.email,
+        reason: error.message,
+      });
       next(error);
     }
+  }
+
+  async logout(req: Request, res: Response) {
+    res.clearCookie("onevriksh_session");
+    res.status(200).json({ success: true, message: "Logged out" });
+  }
+
+  async getCurrentUser(req: any, res: Response) {
+    res.status(200).json({
+      success: true,
+      user: req.user,
+    });
   }
 }
