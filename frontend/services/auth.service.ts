@@ -233,27 +233,26 @@ export class AuthService {
 
     const cleanPhone = input.phone ? input.phone.trim() : undefined;
     const cleanUsername = input.username ? input.username.toLowerCase().trim() : undefined;
+    const emailAddr = (input as any).email
+      ? (input as any).email.toLowerCase().trim()
+      : `${cleanUsername ? cleanUsername : "user_" + Date.now()}@onevriksh.internal`;
 
     if (cleanPhone) {
       const existingPhone = await User.findOne({ phone: cleanPhone });
-      if (existingPhone) {
+      if (existingPhone && existingPhone.isPhoneVerified) {
         throw new Error("An account with this mobile number already exists.");
       }
     }
 
     if (cleanUsername) {
       const existingUsername = await User.findOne({ username: cleanUsername });
-      if (existingUsername) {
+      if (existingUsername && existingUsername.status === "ACTIVE") {
         throw new Error("This username is already taken.");
       }
     }
 
-    const emailAddr = (input as any).email
-      ? (input as any).email.toLowerCase().trim()
-      : `${cleanUsername ? cleanUsername : "user_" + Date.now()}@onevriksh.internal`;
-
     const existingEmail = await User.findOne({ email: emailAddr });
-    if (existingEmail) {
+    if (existingEmail && existingEmail.isEmailVerified) {
       throw new Error("An account with this email address already exists.");
     }
 

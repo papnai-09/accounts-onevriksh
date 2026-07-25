@@ -32,6 +32,7 @@ export class AuthController {
       next(error);
     }
   }
+
   static async sendOtp(req: Request, res: Response, next: NextFunction) {
     try {
       const { phone } = req.body;
@@ -58,8 +59,32 @@ export class AuthController {
       const ua = req.headers["user-agent"] || "Unknown";
       const result = await AuthService.register(req.body, ip, ua);
       res.status(201).json(result);
-    } catch (error) {
-      next(error);
+    } catch (error: any) {
+      if (error.message && error.message.includes("already exists")) {
+        res.status(409).json({ success: false, error: error.message });
+        return;
+      }
+      res.status(400).json({ success: false, error: error.message || "Registration failed" });
+    }
+  }
+
+  static async verifyEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { token } = req.body;
+      const result = await AuthService.verifyEmail(token);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message || "Email verification failed" });
+    }
+  }
+
+  static async resendVerificationEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { email } = req.body;
+      const result = await AuthService.resendVerificationEmail(email);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message || "Could not resend verification email" });
     }
   }
 
@@ -80,8 +105,12 @@ export class AuthController {
       });
 
       res.status(200).json(result);
-    } catch (error) {
-      next(error);
+    } catch (error: any) {
+      if (error.message && error.message.includes("not verified")) {
+        res.status(403).json({ success: false, error: error.message, requiresVerification: true });
+        return;
+      }
+      res.status(401).json({ success: false, error: error.message || "Login failed" });
     }
   }
 
