@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion } from "framer-motion";
@@ -13,8 +13,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 
-export default function RegisterPage() {
+function RegisterForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const [showPassword, setShowPassword] = React.useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
@@ -33,8 +34,9 @@ export default function RegisterPage() {
     try {
       const res = await registerAction(data);
       if (res.success) {
-        toast({ type: "info", title: "OTP Sent! 📱", description: "Please verify the 6-digit code sent to your mobile number to complete account creation." });
-        setTimeout(() => router.push(`/verify-otp?phone=${encodeURIComponent(data.phone)}`), 600);
+        toast({ type: "info", title: "OTP Sent! 📱", description: "Please verify the 6-digit code sent to your mobile number." });
+        const queryString = searchParams.toString() ? `&${searchParams.toString()}` : "";
+        setTimeout(() => router.push(`/verify-otp?phone=${encodeURIComponent(data.phone)}${queryString}`), 600);
       } else {
         toast({ type: "error", title: "Registration failed", description: res.error });
       }
@@ -44,6 +46,8 @@ export default function RegisterPage() {
       setIsLoading(false);
     }
   };
+
+  const loginHref = `/login${searchParams.toString() ? `?${searchParams.toString()}` : ""}`;
 
   return (
     <motion.div
@@ -56,13 +60,13 @@ export default function RegisterPage() {
         {/* Header */}
         <div className="mb-8 text-left">
           <div className="mb-6 flex justify-start">
-            <img src="/logo-short.png" alt="Onevriksh Logo" className="h-12 w-auto object-contain" />
+            <img src="/logo-short.png" alt="OneVriksh Logo" className="h-12 w-auto object-contain" />
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
             Create Account
           </h1>
           <p className="mt-3 text-base font-medium text-slate-500 dark:text-slate-400">
-            Create your Onevriksh Account to get started
+            Create your OneVriksh Account to get started
           </p>
         </div>
 
@@ -177,11 +181,19 @@ export default function RegisterPage() {
         {/* Login Link */}
         <p className="mt-6 text-center text-xs text-slate-500 dark:text-slate-400">
           Already have an account?{" "}
-          <Link href="/login" className="font-semibold text-brand-700 hover:text-brand-800 dark:text-brand-400">
+          <Link href={loginHref} className="font-semibold text-brand-700 hover:text-brand-800 dark:text-brand-400">
             Sign In
           </Link>
         </p>
       </div>
     </motion.div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <React.Suspense fallback={<div className="w-full max-w-md p-8 text-center text-slate-500">Loading...</div>}>
+      <RegisterForm />
+    </React.Suspense>
   );
 }

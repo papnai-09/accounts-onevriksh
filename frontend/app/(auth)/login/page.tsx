@@ -12,15 +12,16 @@ import { loginAction } from "@/actions/auth";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
-import type { Metadata } from "next";
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const returnUrl = searchParams.get("returnUrl") || "/dashboard";
   const { toast } = useToast();
   const [showPassword, setShowPassword] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
+
+  const returnUrl = searchParams.get("returnUrl") || searchParams.get("return_to") || searchParams.get("redirect_uri");
+  const clientId = searchParams.get("client_id");
 
   const {
     register,
@@ -36,8 +37,22 @@ function LoginForm() {
     try {
       const res = await loginAction(data);
       if (res.success) {
-        toast({ type: "success", title: "Welcome back!", description: "Redirecting to your dashboard…" });
-        setTimeout(() => router.push(returnUrl), 800);
+        toast({ type: "success", title: "Welcome back!", description: "Redirecting to your application..." });
+
+        setTimeout(() => {
+          if (clientId) {
+            // Re-trigger OAuth authorization flow with preserved state & PKCE parameters
+            window.location.href = `/oauth/authorize?${searchParams.toString()}`;
+          } else if (returnUrl) {
+            if (returnUrl.startsWith("http://") || returnUrl.startsWith("https://")) {
+              window.location.href = returnUrl;
+            } else {
+              router.push(returnUrl);
+            }
+          } else {
+            router.push("/dashboard");
+          }
+        }, 600);
       } else {
         toast({ type: "error", title: "Sign in failed", description: res.error });
       }
@@ -47,6 +62,8 @@ function LoginForm() {
       setIsLoading(false);
     }
   };
+
+  const registerHref = `/register${searchParams.toString() ? `?${searchParams.toString()}` : ""}`;
 
   return (
     <motion.div
@@ -59,13 +76,13 @@ function LoginForm() {
         {/* Header */}
         <div className="mb-8 text-left">
           <div className="mb-6 flex justify-start">
-            <img src="/logo-short.png" alt="Onevriksh Logo" className="h-12 w-auto object-contain" />
+            <img src="/logo-short.png" alt="OneVriksh Logo" className="h-12 w-auto object-contain" />
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
             Sign In
           </h1>
           <p className="mt-3 text-base font-medium text-slate-500 dark:text-slate-400">
-            Sign in to your Onevriksh Account
+            Sign in to your OneVriksh Account
           </p>
         </div>
 
@@ -127,8 +144,8 @@ function LoginForm() {
 
         {/* Register Link */}
         <p className="mt-6 text-center text-xs text-slate-500 dark:text-slate-400">
-          New to Onevriksh?{" "}
-          <Link href="/register" className="font-semibold text-brand-700 hover:text-brand-800 dark:text-brand-400">
+          New to OneVriksh?{" "}
+          <Link href={registerHref} className="font-semibold text-brand-700 hover:text-brand-800 dark:text-brand-400">
             Create an account
           </Link>
         </p>

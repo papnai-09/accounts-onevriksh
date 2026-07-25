@@ -21,6 +21,9 @@ function VerifyOtpForm() {
   const [isResending, setIsResending] = React.useState(false);
   const [timer, setTimer] = React.useState(45);
 
+  const returnUrl = searchParams.get("returnUrl") || searchParams.get("return_to") || searchParams.get("redirect_uri");
+  const clientId = searchParams.get("client_id");
+
   const formattedPhone = React.useMemo(() => {
     if (!rawPhone) return "your mobile number";
     const cleaned = rawPhone.replace(/\D/g, "");
@@ -51,9 +54,22 @@ function VerifyOtpForm() {
         toast({
           type: "success",
           title: "Account Created & Verified! 🎉",
-          description: "Your Onevriksh account has been created successfully. Redirecting to sign in...",
+          description: "Your OneVriksh account has been created successfully. Redirecting...",
         });
-        setTimeout(() => router.push("/login"), 1000);
+
+        setTimeout(() => {
+          if (clientId) {
+            window.location.href = `/oauth/authorize?${searchParams.toString()}`;
+          } else if (returnUrl) {
+            if (returnUrl.startsWith("http://") || returnUrl.startsWith("https://")) {
+              window.location.href = returnUrl;
+            } else {
+              router.push(returnUrl);
+            }
+          } else {
+            router.push("/login");
+          }
+        }, 1000);
       } else {
         toast({ type: "error", title: "Verification Failed", description: res.error || "Invalid OTP code." });
       }
@@ -87,6 +103,8 @@ function VerifyOtpForm() {
     }
   };
 
+  const loginHref = `/login${searchParams.toString() ? `?${searchParams.toString()}` : ""}`;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -97,7 +115,7 @@ function VerifyOtpForm() {
       <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-white/95 dark:bg-slate-900/95 p-8 shadow-2xl shadow-brand-500/10 backdrop-blur-xl">
         {/* Top Header Logo */}
         <div className="mb-6 flex items-center justify-between">
-          <img src="/logo-short.png" alt="Onevriksh Logo" className="h-10 w-auto object-contain" />
+          <img src="/logo-short.png" alt="OneVriksh Logo" className="h-10 w-auto object-contain" />
           <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/60">
             <ShieldCheck className="h-3.5 w-3.5" />
             2FA Secured
@@ -180,7 +198,7 @@ function VerifyOtpForm() {
         {/* Back Link */}
         <div className="mt-8 text-center pt-2 border-t border-slate-100 dark:border-slate-800">
           <Link
-            href="/login"
+            href={loginHref}
             className="inline-flex items-center space-x-1.5 text-xs font-semibold text-slate-500 hover:text-brand-600 transition-colors"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
